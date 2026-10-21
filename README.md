@@ -60,7 +60,7 @@ python3 scripts/build-native.py
 
 Set `RMM_GO_PATH` if the compiler is outside PATH. The build verifies Go module checksums through the normal Go module/sum database mechanisms, runs native Go tests, cross-builds the Windows executable, and writes its checksum and source digest. On Linux it also builds `build/hybridrmm-agent` for functional testing. CGO is disabled. The Windows executable and manifest are deliberately retained in Git so the admin download works after a normal VPS checkout. They contain no server-specific credentials. Do not edit binaries or checksum expectations to bypass failed verification.
 
-The historical PyInstaller helper is not the dashboard's native agent build. GitHub Actions now builds native agents, runs Windows/Linux process tests, and includes a real Windows service lifecycle test on an isolated runner. Until its result is checked, Windows runtime validation remains unconfirmed. The committed build metadata labels the artifact unsigned and Windows-runtime-unverified.
+The historical PyInstaller helper is not the dashboard's native agent build. GitHub Actions now builds native agents, runs Windows/Linux process tests, and includes a real Windows service lifecycle test on an isolated runner. The [Windows/Linux CI run](https://github.com/istuntexe/RMM/actions/runs/39538861703) passed, including native Windows reporting and the real service installation/restart/uninstall test. The committed executable was cross-built locally; its initial metadata remains conservative about testing that exact byte sequence. Test the delivered bundle on one target device before wider deployment.
 
 ## Validate
 
