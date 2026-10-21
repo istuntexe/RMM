@@ -1,88 +1,103 @@
-# RMM inventory foundation
+# Hybrid RMM
 
-A new Python 3.12 inventory server/agent and consent-based browser screen sharing. Inventory uses the standard library; the separate signaling service uses the pinned WebSocket dependency. This is an independent implementation, not a reconstruction of CloakGuard or a client compatible with its API.
+Admin dashboard, downloadable Windows inventory agent, automatic device health reporting, and a separate consent-based browser screen-sharing pilot. This is an independent implementation, not a CloakGuard-compatible clone.
 
-## Run locally
+## Admin → download → install → monitor
 
-From the repository root (in this cloud environment, `/workspace/RMM`):
+1. Sign in to the dashboard using the admin token from the server's private environment configuration.
+2. Choose **Download Windows agent**. Each ZIP creates one pending device with a unique credential, a native Windows x64 executable, `install.ps1`, `uninstall.ps1`, and a checksum manifest. No global admin or enrollment token is included.
+3. On the target Windows computer, extract the ZIP into a private directory. Open PowerShell **as Administrator** in that directory and run:
+
+   ```powershell
+   powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1
+   ```
+
+4. Read the notice and type **INSTALL**. The installer protects the credential directory and registers the visible **Hybrid RMM Inventory Agent** Windows service, running as **LocalService**, with automatic startup.
+5. The agent reports hostname, OS version, architecture, CPU usage, physical memory usage, system-volume disk usage, and uptime every minute. The dashboard refreshes every 30 seconds and shows online/offline/pending/revoked devices, search/filter, device details, and recent CPU readings.
+6. Use **Revoke** to invalidate a retired device's credential. This blocks reports and new screen sessions; it does not uninstall software. Run the included uninstaller locally to remove the service. The protected configuration remains for deliberate preservation/removal.
+
+Use a fresh download for every device. A ZIP contains that device's credential: never publish it or reuse it across computers. Python and an open browser are not required on monitored Windows devices. The process-only execution-policy override above does not change persistent policy. The executable is **unsigned**; Authenticode signing and reputation are not established. Windows 10/Server 2016 or newer, x64, is the build baseline.
+
+## Upgrade the existing VPS
+
+The older deployed pilot does not gain this UI until its source is upgraded. On the VPS in your working Bitvise session:
+
+```bash
+cd /root/RMM-deploy
+git pull --ff-only
+bash scripts/upgrade-vps.sh
+```
+
+The upgrade helper refuses local source changes, verifies a fast-forward update, preserves a private database/environment backup, installs dependencies, checks artifact integrity, runs integration tests, and restarts the existing managed services. It preserves coturn and Nginx configuration. A failed check stops the upgrade and leaves the backup for diagnosis; do not blindly delete installed state or overwrite credentials. It has been syntax-checked, not run on your VPS from this environment.
+
+Afterward open `https://hybridrmm.online`. Get the admin token privately from `/etc/hybridrmm/server.env` on the VPS; do not paste that file into chat. Run the installer on a single test computer and verify reporting, restart, and uninstall before wider rollout.
+
+For a fresh Ubuntu 24.04 host, see [deployment](deploy/README.md). The server's public origin is configured with `RMM_PUBLIC_URL` (defaults to `https://hybridrmm.online` in the CLI). It is never inferred from an untrusted Host header.
+
+## Run the server locally
+
+Python 3.12 or newer:
 
 ```bash
 python3 -m pip install -r requirements-signaling.txt
 export RMM_ADMIN_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export RMM_ENROLLMENT_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+export RMM_PUBLIC_URL=http://127.0.0.1:8080
 python3 server.py
 ```
 
-The server binds loopback port 8080. Open its root page locally to use the inventory dashboard. Enter your admin token there. Keep the tokens private; never commit them. Admin and enrollment tokens must differ and be at least 32 characters long. Restart the server with the same tokens if you want existing admin and enrollment access to continue. Existing device credentials remain valid in the SQLite database.
+The admin and legacy enrollment tokens must differ and contain at least 32 characters. Keep the same private tokens and database when restarting. Backends bind loopback and must sit behind an HTTPS reverse proxy for remote use. The Linux server uses Python; no Go compiler is needed in deployment because the unsigned Windows artifact is included under `agent-binaries/windows-amd64/`. Its SHA-256 is verified before an installer ZIP is generated.
 
-In a shell where `RMM_ENROLLMENT_TOKEN` is available:
+The original `agent.py` remains as a manual, legacy enrollment client for testing/backward compatibility. Dashboard-provisioned native agents need only their private `device.json`; they never receive the global enrollment token.
+
+## Native agent source and builds
+
+Source is under `native-agent/`. Build with official **Go 1.27.3** and Python:
 
 ```bash
-python3 agent.py --server http://127.0.0.1:8080 --consent --once
+python3 scripts/build-native.py
 ```
 
-Omit `--once` to report every 60 seconds in the foreground; Ctrl-C stops the agent. Each device should use its own state file (`--state PATH`). Initial enrollment uses the shared enrollment token; subsequent heartbeats use a unique device credential saved in the state file. On Windows, additionally restrict the state file's ACL to its service account before deployment; POSIX file modes do not establish Windows ACLs.
+Set `RMM_GO_PATH` if the compiler is outside PATH. The build verifies Go module checksums through the normal Go module/sum database mechanisms, runs native Go tests, cross-builds the Windows executable, and writes its checksum and source digest. On Linux it also builds `build/hybridrmm-agent` for functional testing. CGO is disabled. The Windows executable and manifest are deliberately retained in Git so the admin download works after a normal VPS checkout. They contain no server-specific credentials. Do not edit binaries or checksum expectations to bypass failed verification.
 
-The only collected fields are hostname, operating system, OS release, machine architecture, and agent version. The inventory agent collects no username, browsing history, screen, audio, or user files. The optional browser screen-sharing feature below sends only the screen/window the user explicitly chooses. No service, autorun, or other persistence is installed.
-
-## API
-
-- `GET /healthz`: readiness response.
-- `POST /api/enroll`: enrollment bearer token, inventory JSON; returns device ID and a one-time device credential.
-- `POST /api/heartbeat`: device bearer credential, inventory JSON.
-- `GET /api/devices`: admin bearer token; lists inventory and last-seen status. “Online” means a heartbeat within 180 seconds.
-
-Inventory JSON must contain exactly the five fields listed above as strings of at most 256 characters. Request bodies are limited to 16 KiB. Device credentials are hashed in SQLite and omitted from device listings. Inventory itself is stored as plaintext in the database, so restrict access to the database and its backups.
+The historical PyInstaller helper is not the dashboard's native agent build. GitHub Actions now builds native agents, runs Windows/Linux process tests, and includes a real Windows service lifecycle test on an isolated runner. Until its result is checked, Windows runtime validation remains unconfirmed. The committed build metadata labels the artifact unsigned and Windows-runtime-unverified.
 
 ## Validate
 
 ```bash
-python3 -m unittest discover -s tests -v
-```
-
-Integration tests use an ephemeral local HTTP server and temporary database, exercising enrollment, persisted agent state, heartbeat updates, dashboard delivery, access separation, invalid input, and HTTPS enforcement.
-
-## Scope and deployment
-
-This is a development prototype, not an Internet-facing production RMM. Before remote deployment, add a supported application server/reverse proxy with HTTPS, rate limits, operator identity and roles, audit logs, device revocation and enrollment-token rotation, Windows credential storage, and deployment tests. The Python development HTTP server is not intended for direct Internet exposure. Agents reject non-loopback plain HTTP and do not follow redirects carrying credentials.
-
-Browser-based, view-only screen sharing is available with explicit per-session consent. Native remote input, file transfer, command execution, signed updates, and code signing are not implemented. A Windows inventory packaging workflow is provided; its remote build status remains unconfirmed. A later Windows build must be tested on Windows and signed only after its final contents and publisher identity are established. No existing CloakGuard credentials or download tokens are reused.
-
-Each cloud task already has an isolated checkout. Work in the existing checkout; do not create Git worktrees unless explicitly requested.
-
-## Verify the dashboard in a browser
-
-The dashboard is an inventory page with admin-token authentication, manual refresh, online/offline status, and a horizontally scrollable table on small screens. It is not a complete remote-support console.
-
-```bash
+python3 -W error::ResourceWarning -m unittest discover -s tests -v
+python3 scripts/smoke-agent.py python3 agent.py
+# After the native build, on Linux:
+python3 scripts/smoke-native-agent.py build/hybridrmm-agent
+# Optional development browser tooling:
 python3 -m pip install playwright==1.58.0
 python3 -m playwright install chromium
 python3 scripts/verify-dashboard.py
+# Install coturn first for real local relay transport tests:
+python3 scripts/verify-support.py
 ```
 
-These five real-browser tests cover wrong credentials, empty state, enrollment, status transitions after heartbeat, token storage, untrusted inventory text, clearing rows after authentication failure, network error recovery, and mobile layout. Screenshots are saved under ignored `build/ui/`. Where an existing Chromium installation is used, set `RMM_CHROMIUM_PATH` to its executable path. Browser tooling is for development only, not a runtime server dependency. CI gates the executable build on both API and browser tests.
+Browser tests exercise real sign-in, ZIP download, pending→online transitions, health details, revocation, activity, search/filter, logout, safe rendering, network recovery, and desktop/mobile layout. Screenshots under ignored `build/ui/` use test inventory, not evidence of a Windows installation. The native smoke test runs a real OS agent against the Python server using a dashboard-generated credential. See [verification](docs/VERIFICATION.md) for passed versus outstanding gates.
 
-## Build the Windows executable
+## API and storage
 
-GitHub Actions runs integration and real-process smoke tests on Ubuntu and Windows, then builds and tests an **unsigned Windows x64 executable**. After a successful run, download `hybridrmm-agent-windows-x64-unsigned` from the repository's Actions tab. It includes the executable, `SHA256SUMS.txt`, and build metadata. Workflow creation alone does not establish that the remote build succeeded.
+Admin bearer token required:
 
-To build on Windows yourself, install Python 3.12 x64, open PowerShell in the checkout, and run:
+- `GET /api/devices`: fleet inventory/status.
+- `GET /api/devices/<id>`: device detail and up to 60 recent health samples.
+- `GET /api/agents`: current artifact availability/checksum.
+- `POST /api/agents/windows/download` with `{}`: private per-device installer ZIP.
+- `POST /api/devices/<id>/revoke` with `{}`: invalidate one device.
+- `GET /api/audit`: latest 100 administration events.
 
-```powershell
-powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
-```
+Device credential required: `POST /api/heartbeat`. Legacy global enrollment token: `POST /api/enroll`. Public readiness: `GET /healthz`.
 
-This invocation applies only to the reviewed local build script; it does not change the machine's persistent execution policy. The script creates `.venv-build`, installs pinned PyInstaller with standard TLS/package verification, runs tests, builds the console executable, and tests the packaged program against a temporary local server. Build dependencies are pinned at the PyInstaller version level, not fully locked transitively; bit-identical reproducibility is not guaranteed.
+Inventory strings are bounded and health values must be finite, nonnegative numbers. CPU must be 0–100%; used memory/disk cannot exceed total. The server retains at most 1,440 health samples per reporting device. Schema migration adds revocation/history/audit tables without dropping existing inventory. Device credentials are hashed in SQLite; inventory and metrics are plaintext, so protect the database and backups. Tokens, passwords, and download contents are not written to application audit logs.
 
-Run the packaged agent with an enrollment token supplied privately in its environment:
+## Scope
 
-```powershell
-.\dist\hybridrmm-agent.exe --server https://hybridrmm.online --consent --once --state "$env:LOCALAPPDATA\HybridRMM\device.json"
-```
+This is a device-monitoring foundation. Named operator roles, multi-tenancy, alert delivery, software inventory/patching, remote commands/scripts, native remote keyboard/mouse, file transfer, signed updates, and code signing remain unimplemented. Shared-admin-key authentication is not a full operator identity system. No security-tool interference, decoys, or evasion is included.
 
-Use this URL only after the server is deployed and HTTPS is verified. Omit `--once` for foreground reporting every minute. No administrator privileges are required for basic inventory. Protect the credential file with Windows ACLs before deployment. The executable has no embedded server credentials and is not an installer or Windows service. Signing and timestamping must occur after the final executable is produced; regenerate the checksum after signing because signing changes the file.
+[Browser screen support](docs/SCREEN-SUPPORT.md) remains separate: it uses a supported browser and requires the device user's approval and screen picker for each view-only session. The native service does not capture screens, audio, input, browsing activity, or user files.
 
-
-## Consent-based screen sharing
-
-See [screen-support setup and validation](docs/SCREEN-SUPPORT.md). The dashboard links to a view-only WebRTC viewer and a local-user sharing page. Devices authenticate with their own enrollment credentials, operators with the admin token. The browser screen picker and an explicit approval are required for every session. The Python inventory executable does not capture screens and does not contain an admin token.
+Each cloud task has an isolated checkout. Work in the existing checkout; do not create Git worktrees unless explicitly requested.

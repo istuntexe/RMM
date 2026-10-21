@@ -40,3 +40,11 @@ RMM_TURN_EXTERNAL_IP=85.215.119.221 bash deploy/setup-turn.sh
 ```
 
 This is configuration guidance, not evidence that the dedicated server has been accessed or deployed.
+
+## Dashboard downloads and upgrades
+
+The admin dashboard now provisions native Windows inventory installers, one device per ZIP. The executable is included under `agent-binaries/windows-amd64/` with a SHA-256 manifest, so no Go compiler is required on the VPS. It is unsigned; Windows runtime verification remains a separate gate.
+
+For an existing managed pilot, run `scripts/upgrade-vps.sh` from an up-to-date source checkout as root. It preserves the environment and makes a private database backup before schema migration. It refuses local edits and non-fast-forward source changes. On failure, preserve the backup and diagnose before resuming services. New device health and credential-revocation data live in the existing SQLite database.
+
+Set `RMM_PUBLIC_URL` to the actual HTTPS dashboard origin if it differs from `https://hybridrmm.online`. Installer URLs are never taken from the incoming Host header. Validate the sign-in/download/install/report workflow on one Windows machine before wider rollout.

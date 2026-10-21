@@ -48,25 +48,45 @@ jobs:
           name: dashboard-screenshots
           path: build/ui/*.png
           if-no-files-found: error
-  windows-agent:
+  native-agent:
     needs: [test, dashboard]
-    runs-on: windows-2022
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: '3.12'
-          architecture: x64
-      - name: Build and test Windows executable
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.27.3'
+          cache-dependency-path: native-agent/go.sum
+      - name: Install server test dependency
+        run: python -m pip install -r requirements-signaling.txt
+      - name: Build and test native agent
+        run: python scripts/build-native.py
+      - name: Native Linux process test
+        if: runner.os == 'Linux'
+        run: python scripts/smoke-native-agent.py build/hybridrmm-agent
+      - name: Native Windows process test
+        if: runner.os == 'Windows'
+        run: python scripts/smoke-native-agent.py agent-binaries/windows-amd64/hybridrmm-agent.exe
+      - name: Windows installation, service and uninstall test
+        if: runner.os == 'Windows'
         shell: pwsh
-        run: ./scripts/build-windows.ps1
-      - name: Upload unsigned executable and checksum
+        run: ./scripts/test-windows-service.ps1
+      - name: Record successful Windows runtime checks
+        if: runner.os == 'Windows'
+        run: >-
+          python -c "import json,pathlib; p=pathlib.Path('agent-binaries/windows-amd64/build-info.json'); d=json.loads(p.read_text()); d['windows_runtime_tested']=True; p.write_text(json.dumps(d,indent=2))"
+      - name: Upload unsigned native Windows agent
+        if: runner.os == 'Windows'
         uses: actions/upload-artifact@v4
         with:
-          name: hybridrmm-agent-windows-x64-unsigned
-          path: |
-            dist/hybridrmm-agent.exe
-            dist/SHA256SUMS.txt
-            dist/build-info.json
+          name: hybridrmm-native-windows-x64-unsigned
+          path: agent-binaries/windows-amd64/*
           if-no-files-found: error
           retention-days: 14

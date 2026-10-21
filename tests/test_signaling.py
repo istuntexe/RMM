@@ -26,7 +26,7 @@ class SupportSignaling(unittest.IsolatedAsyncioTestCase):
         from server import digest
         self.device_id, self.token = str(uuid.uuid4()), 'd' * 40
         with closing(sqlite3.connect(self.database)) as db, db:
-            db.execute('INSERT INTO devices VALUES (?, ?, ?, ?)', (self.device_id, digest(self.token), json.dumps(agent.inventory()), 0))
+            db.execute('INSERT INTO devices(id,token_hash,inventory,last_seen) VALUES (?, ?, ?, ?)', (self.device_id, digest(self.token), json.dumps(agent.inventory()), 0))
         self.signal = Signaling(self.database, self.admin, ['http://localhost'], turn_secret='s' * 40,
                                 turn_urls=('turn:relay.example:3478',), request_timeout=5, session_timeout=5)
         self.server = await self.signal.start(port=0)

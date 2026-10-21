@@ -1,0 +1,10 @@
+{
+  "version": "0.2.0",
+  "go": "go1.27.3",
+  "target": "windows/amd64",
+  "signed": false,
+  "sha256": "592e6a6b2836a08e2d2405367dd3579160d05d10edecd48b7ceaaae501dd9e5c",
+  "source_sha256": "2edd1b9e4ac43c624dfc09a5ffe2521aeaf218eee144b397d6c3993121eacfe5",
+  "source": "native-agent/",
+  "windows_runtime_tested": false
+}

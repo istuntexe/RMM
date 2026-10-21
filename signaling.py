@@ -85,7 +85,7 @@ class Signaling:
         except (ValueError, TypeError, AttributeError):
             return False
         with closing(sqlite3.connect(self.database)) as db:
-            row = db.execute('SELECT token_hash FROM devices WHERE id = ?', (data['device_id'],)).fetchone()
+            row = db.execute('SELECT token_hash FROM devices WHERE id = ? AND revoked = 0', (data['device_id'],)).fetchone()
         if not row:
             return False
         expected = digest(self.admin_token) if data['role'] == 'viewer' else row[0]
