@@ -49,6 +49,18 @@ Remote desktop, file transfer, command execution, signed updates, packaging, and
 
 Each cloud task already has an isolated checkout. Work in the existing checkout; do not create Git worktrees unless explicitly requested.
 
+## Verify the dashboard in a browser
+
+The dashboard is an inventory page with admin-token authentication, manual refresh, online/offline status, and a horizontally scrollable table on small screens. It is not a complete remote-support console.
+
+```bash
+python3 -m pip install playwright==1.58.0
+python3 -m playwright install chromium
+python3 scripts/verify-dashboard.py
+```
+
+These five real-browser tests cover wrong credentials, empty state, enrollment, status transitions after heartbeat, token storage, untrusted inventory text, clearing rows after authentication failure, network error recovery, and mobile layout. Screenshots are saved under ignored `build/ui/`. Where an existing Chromium installation is used, set `RMM_CHROMIUM_PATH` to its executable path. Browser tooling is for development only, not a runtime server dependency. CI gates the executable build on both API and browser tests.
+
 ## Build the Windows executable
 
 GitHub Actions runs integration and real-process smoke tests on Ubuntu and Windows, then builds and tests an **unsigned Windows x64 executable**. After a successful run, download `hybridrmm-agent-windows-x64-unsigned` from the repository's Actions tab. It includes the executable, `SHA256SUMS.txt`, and build metadata. Workflow creation alone does not establish that the remote build succeeded.

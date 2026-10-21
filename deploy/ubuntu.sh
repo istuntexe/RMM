@@ -24,6 +24,9 @@ else
   echo "$APP already exists; preserve it and update explicitly before rerunning." >&2
   exit 1
 fi
+# Root owns the source; the service group needs read/traverse access.
+chown -R root:hybridrmm "$APP"
+chmod -R g+rX,o-rwx "$APP"
 cd "$APP"
 python3 -m unittest discover -s tests -v
 install -d -m 0700 /etc/hybridrmm

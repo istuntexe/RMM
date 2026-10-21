@@ -23,8 +23,27 @@ jobs:
         run: python -W error::ResourceWarning -m unittest discover -s tests -v
       - name: Agent process smoke test
         run: python scripts/smoke-agent.py python agent.py
+  dashboard:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Install browser test tools
+        run: |
+          python -m pip install playwright==1.58.0
+          python -m playwright install --with-deps chromium
+      - name: Test dashboard in Chromium
+        run: python scripts/verify-dashboard.py
+      - name: Upload dashboard screenshots
+        uses: actions/upload-artifact@v4
+        with:
+          name: dashboard-screenshots
+          path: build/ui/*.png
+          if-no-files-found: error
   windows-agent:
-    needs: test
+    needs: [test, dashboard]
     runs-on: windows-2022
     steps:
       - uses: actions/checkout@v4

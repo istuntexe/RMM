@@ -6,6 +6,7 @@ import threading
 import unittest
 import urllib.error
 import urllib.request
+from contextlib import closing
 from pathlib import Path
 from unittest.mock import patch
 import agent
@@ -98,6 +99,48 @@ class Integration(unittest.TestCase):
             for connection in connections:
                 if not connection.closed:
                     connection.close()
+
+    def test_device_credentials_are_isolated_and_hashed(self):
+        first = agent.request(self.url, '/api/enroll', self.enroll)
+        second = agent.request(self.url, '/api/enroll', self.enroll)
+        self.assertNotEqual(first['device_token'], second['device_token'])
+        with closing(sqlite3.connect(Path(self.temp.name) / 'db.sqlite')) as db, db:
+            db.execute('UPDATE devices SET last_seen = 0')
+        agent.request(self.url, '/api/heartbeat', first['device_token'])
+        devices = {d['id']: d for d in self.devices(self.admin)}
+        self.assertTrue(devices[first['id']]['online'])
+        self.assertFalse(devices[second['id']]['online'])
+        with closing(sqlite3.connect(Path(self.temp.name) / 'db.sqlite')) as db:
+            hashes = [r[0] for r in db.execute('SELECT token_hash FROM devices')]
+        self.assertNotIn(first['device_token'], hashes)
+        self.assertIn(server.digest(first['device_token']), hashes)
+
+    def test_invalid_and_oversized_requests_do_not_enroll(self):
+        cases = [(b'not json', 400), (b'{}', 400),
+                 (b'{"hostname":123}', 400), (b'x' * 16385, 413)]
+        for payload, status in cases:
+            req = urllib.request.Request(self.url + '/api/enroll', data=payload,
+                                         headers={'Authorization': 'Bearer ' + self.enroll})
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(req)
+            self.addCleanup(error.exception.close)
+            self.assertEqual(error.exception.code, status)
+        self.assertEqual(self.devices(self.admin), [])
+
+    def test_credentials_and_inventory_survive_server_restart(self):
+        enrolled = agent.request(self.url, '/api/enroll', self.enroll)
+        self.server.shutdown()
+        self.server.server_close()
+        self.thread.join()
+        self.server = server.create_server(('127.0.0.1', 0), str(Path(self.temp.name) / 'db.sqlite'), self.admin, self.enroll)
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.url = f'http://127.0.0.1:{self.server.server_port}'
+        agent.request(self.url, '/api/heartbeat', enrolled['device_token'])
+        devices = self.devices(self.admin)
+        self.assertEqual(len(devices), 1)
+        self.assertEqual(devices[0]['id'], enrolled['id'])
+        self.assertTrue(devices[0]['online'])
 
     def test_remote_plaintext_rejected(self):
         with self.assertRaises(ValueError):
