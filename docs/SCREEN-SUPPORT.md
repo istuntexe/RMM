@@ -32,12 +32,12 @@ In deployment, leave `RMM_SIGNAL_URL` unset so the browser uses same-origin `wss
 The optional `deploy/setup-turn.sh` configures coturn on Ubuntu 24.04 after the HTTPS server deployment succeeds. Review it before running as root:
 
 ```bash
-sudo bash deploy/setup-turn.sh
+sudo env RMM_TURN_EXTERNAL_IP=85.215.119.221 bash deploy/setup-turn.sh
 ```
 
 It deliberately refuses unmanaged coturn configuration, preserves existing compatible credentials, generates the master secret privately in `/etc/hybridrmm/server.env`, and gives coturn the same secret through a protected configuration. The master secret is never sent to the agent or browser. After consent, signaling issues temporary timestamped usernames and HMAC-SHA1 passwords in the coturn REST format. Password expiry is session lifetime plus a 60-second allowance; keep the VM clock synchronized.
 
-The script copies the certificate/key into a coturn-readable directory and installs a restricted renewal hook. It uses public IP `150.241.106.58`; review the external/private mapping if the VM uses NAT or changes address. Open 3478 TCP/UDP, 5349 TCP, and relay ports 49160–49260 UDP in both the host and provider firewall. Do not open the entire 49152–65535 range by default. Private, loopback, link-local, and multicast peers are blocked in deployment. Never use the loopback allowance from the test fixture in public coturn configuration.
+The script copies the certificate/key into a coturn-readable directory and installs a restricted renewal hook. It requires an explicit public IPv4 through `RMM_TURN_EXTERNAL_IP`; the current dedicated server is `85.215.119.221`. Review the external/private mapping if the server uses NAT. Open 3478 TCP/UDP, 5349 TCP, and relay ports 49160–49260 UDP in both the host and provider firewall. Do not open the entire 49152–65535 range by default. Private, loopback, link-local, and multicast peers are blocked in deployment. Never use the loopback allowance from the test fixture in public coturn configuration.
 
 Coturn startup, public relay connectivity, TLS certificate access/renewal, firewall rules, and cross-network video still require checks on the actual VPS. The TURN script has only been syntax-checked here.
 

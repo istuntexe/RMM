@@ -2,6 +2,16 @@
 # Optional Ubuntu TURN setup, after HTTPS inventory deployment succeeds.
 set -euo pipefail
 umask 077
+if [[ -z ${RMM_TURN_EXTERNAL_IP:-} ]]; then
+  echo 'Set RMM_TURN_EXTERNAL_IP to the target server public IPv4 address.' >&2; exit 1
+fi
+export RMM_TURN_EXTERNAL_IP
+python3 - <<'CHECK_IP'
+import ipaddress, os
+address = ipaddress.ip_address(os.environ['RMM_TURN_EXTERNAL_IP'])
+if address.version != 4 or not address.is_global:
+    raise ValueError('TURN external IP must be a public IPv4 address')
+CHECK_IP
 if [[ $EUID -ne 0 ]]; then echo 'Run as root.' >&2; exit 1; fi
 . /etc/os-release
 if [[ $ID != ubuntu || $VERSION_ID != 24.04 ]]; then echo 'Ubuntu 24.04 required.' >&2; exit 1; fi
@@ -39,11 +49,12 @@ with path.open('a') as stream:
         if key not in values:
             stream.write(key + '=' + value + '\n')
 os.chmod(path, 0o600)
+external_ip = os.environ['RMM_TURN_EXTERNAL_IP']
 config = f'''# Managed by hybridrmm
 listening-port=3478
 tls-listening-port=5349
-# This VM was supplied with this public IPv4; review mapping if the VM changes.
-external-ip=150.241.106.58
+# Explicit target public IPv4; review mapping if the host uses NAT.
+external-ip={external_ip}
 min-port=49160
 max-port=49260
 fingerprint

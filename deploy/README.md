@@ -27,3 +27,16 @@ Deployment has not been verified on the target VM until SSH access and the deplo
 ## Browser screen support
 
 The deployment also installs the separate consent-gated signaling service and `/ws` reverse proxy. See [screen support](../docs/SCREEN-SUPPORT.md). Use `deploy/setup-turn.sh` only after HTTPS succeeds to install the optional TURN relay; it requires additional provider/host firewall rules. No native screen capture, remote input, or commands are installed on managed devices. The deployment's public WSS smoke test checks request/rejection flow only; actual cross-network video must be tested separately.
+
+
+## Current dedicated server
+
+The requested target is `85.215.119.221`. Before deployment, point `hybridrmm.online` to that address and remove any stale IPv6 record. SSH access from the deployment environment must work; the latest attempt on TCP 22 was refused before authentication.
+
+After the base deployment and HTTPS checks succeed, configure TURN with an explicit address:
+
+```bash
+RMM_TURN_EXTERNAL_IP=85.215.119.221 bash deploy/setup-turn.sh
+```
+
+This is configuration guidance, not evidence that the dedicated server has been accessed or deployed.
