@@ -48,3 +48,23 @@ This is a development prototype, not an Internet-facing production RMM. Before r
 Remote desktop, file transfer, command execution, signed updates, packaging, and code signing are not implemented. A later Windows build must be tested on Windows and signed only after its final contents and publisher identity are established. No existing CloakGuard credentials or download tokens are reused.
 
 Each cloud task already has an isolated checkout. Work in the existing checkout; do not create Git worktrees unless explicitly requested.
+
+## Build the Windows executable
+
+GitHub Actions runs integration and real-process smoke tests on Ubuntu and Windows, then builds and tests an **unsigned Windows x64 executable**. After a successful run, download `hybridrmm-agent-windows-x64-unsigned` from the repository's Actions tab. It includes the executable, `SHA256SUMS.txt`, and build metadata. Workflow creation alone does not establish that the remote build succeeded.
+
+To build on Windows yourself, install Python 3.12 x64, open PowerShell in the checkout, and run:
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File .\scripts\build-windows.ps1
+```
+
+This invocation applies only to the reviewed local build script; it does not change the machine's persistent execution policy. The script creates `.venv-build`, installs pinned PyInstaller with standard TLS/package verification, runs tests, builds the console executable, and tests the packaged program against a temporary local server. Build dependencies are pinned at the PyInstaller version level, not fully locked transitively; bit-identical reproducibility is not guaranteed.
+
+Run the packaged agent with an enrollment token supplied privately in its environment:
+
+```powershell
+.\dist\hybridrmm-agent.exe --server https://hybridrmm.online --consent --once --state "$env:LOCALAPPDATA\HybridRMM\device.json"
+```
+
+Use this URL only after the server is deployed and HTTPS is verified. Omit `--once` for foreground reporting every minute. No administrator privileges are required for basic inventory. Protect the credential file with Windows ACLs before deployment. The executable has no embedded server credentials and is not an installer or Windows service. Signing and timestamping must occur after the final executable is produced; regenerate the checksum after signing because signing changes the file.

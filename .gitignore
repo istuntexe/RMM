@@ -2,3 +2,7 @@ data/
 __pycache__/
 *.pyc
 .env
+.venv-build/
+build/
+dist/
+*.spec

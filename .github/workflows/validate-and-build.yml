@@ -1,0 +1,47 @@
+name: Validate and build agent
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Integration tests
+        run: python -W error::ResourceWarning -m unittest discover -s tests -v
+      - name: Agent process smoke test
+        run: python scripts/smoke-agent.py python agent.py
+  windows-agent:
+    needs: test
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          architecture: x64
+      - name: Build and test Windows executable
+        shell: pwsh
+        run: ./scripts/build-windows.ps1
+      - name: Upload unsigned executable and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: hybridrmm-agent-windows-x64-unsigned
+          path: |
+            dist/hybridrmm-agent.exe
+            dist/SHA256SUMS.txt
+            dist/build-info.json
+          if-no-files-found: error
+          retention-days: 14
