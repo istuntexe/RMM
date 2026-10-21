@@ -23,3 +23,7 @@ curl --fail https://hybridrmm.online/healthz
 Retrieve the admin token privately from the root-only environment file and enter it in the dashboard. Supply only the enrollment token to a consenting inventory agent. Never distribute the admin token to agents. Certificate renewal uses `certbot.timer`; configure a certificate contact email after initial issuance. Back up `/var/lib/hybridrmm` and protect the credentials and backups.
 
 Deployment has not been verified on the target VM until SSH access and the deployment checks succeed. The script itself must also be exercised on Ubuntu; shell syntax checks alone do not establish readiness.
+
+## Browser screen support
+
+The deployment also installs the separate consent-gated signaling service and `/ws` reverse proxy. See [screen support](../docs/SCREEN-SUPPORT.md). Use `deploy/setup-turn.sh` only after HTTPS succeeds to install the optional TURN relay; it requires additional provider/host firewall rules. No native screen capture, remote input, or commands are installed on managed devices. The deployment's public WSS smoke test checks request/rejection flow only; actual cross-network video must be tested separately.

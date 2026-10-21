@@ -1,12 +1,13 @@
 # RMM inventory foundation
 
-A new server and matching opt-in inventory agent, written in Python 3.12 using only the standard library. This is an independent implementation, not a reconstruction of CloakGuard or a client compatible with its API.
+A new Python 3.12 inventory server/agent and consent-based browser screen sharing. Inventory uses the standard library; the separate signaling service uses the pinned WebSocket dependency. This is an independent implementation, not a reconstruction of CloakGuard or a client compatible with its API.
 
 ## Run locally
 
-From `/workspace/RMM`:
+From the repository root (in this cloud environment, `/workspace/RMM`):
 
 ```bash
+python3 -m pip install -r requirements-signaling.txt
 export RMM_ADMIN_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 export RMM_ENROLLMENT_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
 python3 server.py
@@ -22,7 +23,7 @@ python3 agent.py --server http://127.0.0.1:8080 --consent --once
 
 Omit `--once` to report every 60 seconds in the foreground; Ctrl-C stops the agent. Each device should use its own state file (`--state PATH`). Initial enrollment uses the shared enrollment token; subsequent heartbeats use a unique device credential saved in the state file. On Windows, additionally restrict the state file's ACL to its service account before deployment; POSIX file modes do not establish Windows ACLs.
 
-The only collected fields are hostname, operating system, OS release, machine architecture, and agent version. No username, browsing history, screen, audio, or user files are collected. No service, autorun, or other persistence is installed.
+The only collected fields are hostname, operating system, OS release, machine architecture, and agent version. The inventory agent collects no username, browsing history, screen, audio, or user files. The optional browser screen-sharing feature below sends only the screen/window the user explicitly chooses. No service, autorun, or other persistence is installed.
 
 ## API
 
@@ -45,7 +46,7 @@ Integration tests use an ephemeral local HTTP server and temporary database, exe
 
 This is a development prototype, not an Internet-facing production RMM. Before remote deployment, add a supported application server/reverse proxy with HTTPS, rate limits, operator identity and roles, audit logs, device revocation and enrollment-token rotation, Windows credential storage, and deployment tests. The Python development HTTP server is not intended for direct Internet exposure. Agents reject non-loopback plain HTTP and do not follow redirects carrying credentials.
 
-Remote desktop, file transfer, command execution, signed updates, packaging, and code signing are not implemented. A later Windows build must be tested on Windows and signed only after its final contents and publisher identity are established. No existing CloakGuard credentials or download tokens are reused.
+Browser-based, view-only screen sharing is available with explicit per-session consent. Native remote input, file transfer, command execution, signed updates, and code signing are not implemented. A Windows inventory packaging workflow is provided; its remote build status remains unconfirmed. A later Windows build must be tested on Windows and signed only after its final contents and publisher identity are established. No existing CloakGuard credentials or download tokens are reused.
 
 Each cloud task already has an isolated checkout. Work in the existing checkout; do not create Git worktrees unless explicitly requested.
 
@@ -80,3 +81,8 @@ Run the packaged agent with an enrollment token supplied privately in its enviro
 ```
 
 Use this URL only after the server is deployed and HTTPS is verified. Omit `--once` for foreground reporting every minute. No administrator privileges are required for basic inventory. Protect the credential file with Windows ACLs before deployment. The executable has no embedded server credentials and is not an installer or Windows service. Signing and timestamping must occur after the final executable is produced; regenerate the checksum after signing because signing changes the file.
+
+
+## Consent-based screen sharing
+
+See [screen-support setup and validation](docs/SCREEN-SUPPORT.md). The dashboard links to a view-only WebRTC viewer and a local-user sharing page. Devices authenticate with their own enrollment credentials, operators with the admin token. The browser screen picker and an explicit approval are required for every session. The Python inventory executable does not capture screens and does not contain an admin token.

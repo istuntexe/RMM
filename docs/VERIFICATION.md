@@ -2,36 +2,43 @@
 
 ## Implemented scope
 
-This repository implements opt-in inventory enrollment and heartbeats, SQLite persistence, admin-authenticated inventory listing, and a browser inventory dashboard. It does not yet implement remote desktop, file transfer, command execution, signed updates, device revocation, operator roles, or audit logging. It is not a functional replacement for the original RMM.
+- Opt-in device inventory, enrollment, heartbeats, and SQLite persistence.
+- Authenticated browser inventory dashboard, including desktop/mobile layout.
+- Authenticated WebSocket signaling and view-only browser WebRTC screen sharing with explicit per-session approval and the browser's screen picker.
+- Session audit events, timeouts, stopping/rejection, and short-lived coturn credentials.
+- Windows inventory executable packaging workflow and Ubuntu deployment scripts.
+
+This is not a functional clone of CloakGuard. Native Go capture, keyboard/mouse control, remote commands/scripts, file transfer, signed updates, named operator roles, and device revocation are not implemented. Session audit events exist; a comprehensive operator audit system does not.
 
 ## Current-instance results
 
-Validated on Linux with Python 3.12.14 and system Chromium 154.0.8037.57:
+Validated on Linux with Python 3.12.14, websockets 16.0, system Chromium 154.0.8037.57, and coturn 4.6.1:
 
-- Seven integration tests passed: authentication/input validation, Windows connection-close regression, enrollment and heartbeat, isolated/hashed device credentials, malformed/oversized requests, persistence across server restart, and rejecting non-loopback plaintext agent URLs.
-- Five real Chromium tests passed: wrong credentials/empty state; enrollment, offline/online transitions and token storage; treating untrusted inventory as text and clearing rows on failed authentication; failed-network request and retry; desktop screenshot and mobile layout.
-- Agent process smoke test passed: consent refusal, enrollment, heartbeat without enrollment token, one online inventory entry.
-- Deployment shell syntax, diff whitespace, workflow YAML, and build job dependencies passed checks.
+- **13 API/signaling integration tests passed:** authentication/input validation, connection cleanup, enrollment/heartbeat, credential isolation/hashing, malformed/oversized requests, restart persistence, rejecting remote plaintext URLs; WebSocket origin checks, separate role credentials, consent, session isolation, TURN HMAC, rejection/retry, expiry, disconnects, and audit records.
+- **Five real Chromium dashboard tests passed:** invalid credentials/empty state; enrollment and online/offline transitions; no browser token storage; safe rendering and clearing rows after failed authentication; network error recovery; desktop and mobile layout.
+- **Three real Chromium screen-support tests passed:** relay-only WebRTC decoded expected synthetic video pixels, both selected candidates were relay candidates through local coturn, stopping cleared both players; invalid credentials rejected; request rejection never invoked capture.
+- **Agent process smoke test passed:** consent refusal, enrollment, saved credentials without enrollment token, heartbeat, one online device.
+- **Separate server/signaling CLI startup passed:** HTTP readiness, real enrollment, WebSocket authentication, request relay, rejection, and graceful process cleanup.
+- Deployment shell syntax, JavaScript syntax, workflow YAML/build gates, and diff whitespace checks passed.
 
-The mobile layout check initially failed because the table overflowed the viewport. It now scrolls within its own container, and the test passes. Deployment script review also found root/group source permissions that would prevent the service account from reading the app; the script now explicitly grants group read/traverse access. That correction still needs validation on Ubuntu.
+The screen-support browser fixture intentionally replaces OS screen capture with synthetic canvas video. It exercises actual WebRTC encoding/decoding, real TURN authentication and relay, signaling, consent, and stop logic. It does not validate a real OS screen picker, native Windows screen capture, public TURN/TLS, or remote keyboard/mouse control.
 
-## Reproduce
+Local coturn and its required libraries were obtained from Debian's signed package metadata using normal APT verification, extracted under `/workspace/.tools/coturn`, and used only as a temporary loopback test fixture. The fixture's loopback peer allowance must never be copied to the public TURN configuration. The first media test with direct candidates failed in this cloud browser; using a real TURN/TCP relay established the connection and produced decoded video. No verification was disabled to obtain the test dependencies.
 
-```bash
-python3 -W error::ResourceWarning -m unittest discover -s tests -v
-python3 scripts/smoke-agent.py python3 agent.py
-# Install Playwright and Chromium as described in README.md, then:
-python3 scripts/verify-dashboard.py
-bash -n deploy/ubuntu.sh
-```
+## Fixes found during verification
 
-Local browser checks used `RMM_CHROMIUM_PATH=/usr/bin/chromium` to reuse the available browser. Screenshots are under ignored `build/ui/`. CI installs its pinned browser test tooling and uploads screenshots separately.
+- Explicit SQLite closing prevents the Windows test database deletion error.
+- The inventory table now scrolls within its container on mobile.
+- Root-owned source and venv group permissions now allow the restricted service account to read the application; this deployment correction still needs an Ubuntu runtime check.
+- ICE/SDP handling queues candidates until remote description is ready and waits for WebSocket authentication plus device approval before offers.
+- Agent and operator credentials are distinct; TURN's master secret is not sent to clients.
 
 ## Outstanding gates
 
-- GitHub Actions Windows results and executable artifact are unconfirmed: this environment's GitHub API request is blocked. The workflow is configured to test on Windows and exercise the actual packaged executable before artifact upload, but configuration alone does not establish success.
-- PowerShell packaging and Windows execution are not validated in this Linux instance.
-- Ubuntu service startup, Nginx configuration, public DNS, certificate issuance/renewal, HTTPS deployment smoke tests, and VPS restart recovery have not been exercised on the target VM. SSH was refused from this environment.
-- No Authenticode signing, certificate validation on Windows, penetration testing, or production load testing has been performed.
+- Windows GitHub Actions build result and executable artifact remain unconfirmed: this environment's GitHub API request is blocked. The workflow tests Windows and the packaged executable, but configuration alone does not establish success.
+- Real browser screen-picker and stopping behavior on the target Windows desktop require a manual test.
+- Ubuntu systemd/Nginx startup, public DNS/HTTPS, certificate issuance and renewal, public TURN/TLS, provider/host firewall rules, and cross-network video have not been verified on the VPS. SSH has been refused from this environment.
+- TURN deployment script is syntax-checked, not verified on Ubuntu.
+- No Authenticode signing, production load testing, or independent security review was performed.
 
-Deployment must remain a limited pilot until these checks and the missing access-control/auditing requirements are addressed. Do not describe all original RMM features or the full production system as ready.
+Remain in limited-pilot scope until those gates and the missing production access-control requirements are satisfied. Refer to README.md and SCREEN-SUPPORT.md for runnable checks. Do not describe all original RMM features or the full production system as ready.

@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Hybrid RMM screen support</title>
+<style>*{box-sizing:border-box}body{font:16px system-ui;background:#101827;color:#e6edf7;max-width:1100px;margin:30px auto;padding:20px}label{display:block;margin:16px 0}input{display:block;max-width:100%;width:460px;padding:10px;font:inherit}button{padding:10px;font:inherit;margin:5px}video{width:100%;max-height:65vh;background:#050a12}#consent{padding:20px;border:2px solid #f0bb4e}#stop{background:#a81d2b;color:white}p{line-height:1.5}a{color:#b7d7ff}[hidden]{display:none!important}</style></head>
+<body>
+<a href="/">Inventory dashboard</a><h1 id="heading">Screen support</h1>
+<p id="explanation"></p>
+<form id="join">
+<label>Device ID <input id="device" required autocomplete="off"></label>
+<label id="credential-label">Credential <input id="credential" type="password" required autocomplete="off"></label>
+<label id="state-label" hidden>Load your enrolled device state file (read locally, never uploaded)<input id="state-file" type="file" accept=".json,application/json"></label>
+<button id="connect">Connect</button>
+</form>
+<p id="status" role="status">Disconnected</p>
+<section id="consent" hidden><h2>Screen-sharing request</h2><p>An authenticated operator is requesting to view your screen. Only share a screen or window you intend to disclose. Sharing lasts at most 10 minutes. Keyboard, mouse, commands, audio, and file transfer are not enabled.</p><button id="accept">Choose screen and allow</button><button id="reject">Reject request</button></section>
+<button id="stop" hidden>Stop sharing / disconnect</button>
+<video id="screen" autoplay playsinline muted aria-label="Shared screen"></video>
+<script src="/support.js"></script>
+</body></html>

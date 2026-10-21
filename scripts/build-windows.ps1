@@ -5,7 +5,7 @@ if ($env:OS -ne 'Windows_NT') { throw 'Build this Windows executable on Windows.
 python -m venv .venv-build
 if ($LASTEXITCODE -ne 0) { throw 'Could not create build environment.' }
 $Python = Join-Path $PWD '.venv-build\Scripts\python.exe'
-& $Python -m pip install --disable-pip-version-check 'pyinstaller==6.16.0'
+& $Python -m pip install --disable-pip-version-check 'pyinstaller==6.16.0' -r requirements-signaling.txt
 if ($LASTEXITCODE -ne 0) { throw 'PyInstaller installation failed.' }
 & $Python -m unittest discover -s tests -v
 if ($LASTEXITCODE -ne 0) { throw 'Integration tests failed.' }

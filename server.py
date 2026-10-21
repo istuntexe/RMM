@@ -11,15 +11,22 @@ import uuid
 from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from urllib.parse import urlsplit
 
 
 def digest(token):
     return hashlib.sha256(token.encode()).hexdigest()
 
 
-def create_server(address, database, admin_token, enrollment_token):
+def create_server(address, database, admin_token, enrollment_token, support_ws_url=None):
     if min(len(admin_token), len(enrollment_token)) < 32 or admin_token == enrollment_token:
         raise ValueError('Use distinct admin and enrollment tokens of at least 32 characters')
+    websocket_origin = ''
+    if support_ws_url:
+        parsed = urlsplit(support_ws_url)
+        if parsed.scheme not in ('ws', 'wss') or not parsed.hostname or parsed.username or parsed.password or any(c.isspace() or c in ";'\"" for c in support_ws_url):
+            raise ValueError('Invalid signaling URL')
+        websocket_origin = f'{parsed.scheme}://{parsed.netloc}'
     Path(database).parent.mkdir(parents=True, exist_ok=True)
     with closing(sqlite3.connect(database)) as db, db:
         db.execute('CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, inventory TEXT NOT NULL, last_seen REAL NOT NULL)')
@@ -36,7 +43,7 @@ def create_server(address, database, admin_token, enrollment_token):
             self.send_header('Content-Length', str(len(payload)))
             self.send_header('Cache-Control', 'no-store')
             self.send_header('X-Content-Type-Options', 'nosniff')
-            self.send_header('Content-Security-Policy', "default-src 'self'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self'; frame-ancestors 'none'")
+            self.send_header('Content-Security-Policy', f"default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'unsafe-inline'; connect-src 'self' {websocket_origin}; media-src 'self' blob:; frame-ancestors 'none'")
             self.end_headers()
             self.wfile.write(payload)
 
@@ -50,8 +57,15 @@ def create_server(address, database, admin_token, enrollment_token):
         def do_GET(self):
             if self.path == '/healthz':
                 return self.reply(200, {'status': 'ok'})
-            if self.path == '/':
-                return self.reply(200, Path(__file__).with_name('dashboard.html').read_text(), 'text/html; charset=utf-8')
+            pages = {'/': ('dashboard.html', 'text/html; charset=utf-8'),
+                     '/share': ('support.html', 'text/html; charset=utf-8'),
+                     '/viewer': ('support.html', 'text/html; charset=utf-8'),
+                     '/support.js': ('support.js', 'text/javascript; charset=utf-8')}
+            if self.path in pages:
+                filename, content_type = pages[self.path]
+                return self.reply(200, Path(__file__).with_name(filename).read_text(), content_type)
+            if self.path == '/api/support/config':
+                return self.reply(200, {'websocket_url': support_ws_url})
             if self.path != '/api/devices':
                 return self.reply(404, {'error': 'not found'})
             if not self.authorized(admin_token):
@@ -107,6 +121,6 @@ if __name__ == '__main__':
     parser.add_argument('--port', type=int, default=8080)
     parser.add_argument('--database', default='data/rmm.sqlite3')
     args = parser.parse_args()
-    server = create_server((args.host, args.port), args.database, os.environ.get('RMM_ADMIN_TOKEN', ''), os.environ.get('RMM_ENROLLMENT_TOKEN', ''))
+    server = create_server((args.host, args.port), args.database, os.environ.get('RMM_ADMIN_TOKEN', ''), os.environ.get('RMM_ENROLLMENT_TOKEN', ''), os.environ.get('RMM_SIGNAL_URL'))
     print(f'Inventory server listening on {args.host}:{server.server_port}', flush=True)
     server.serve_forever()
