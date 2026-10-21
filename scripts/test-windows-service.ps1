@@ -16,6 +16,7 @@ $env:RMM_ENROLLMENT_TOKEN = (& python -c 'import secrets; print(secrets.token_ur
 $env:RMM_PUBLIC_URL = $Base
 $Headers = @{ Authorization = 'Bearer ' + $env:RMM_ADMIN_TOKEN }
 $Server = $null
+$RecoveryBackup = $null
 try {
     $Server = Start-Process python -ArgumentList @('server.py','--port',"$Port",'--database',('"' + (Join-Path $Folder 'db.sqlite') + '"')) -PassThru -RedirectStandardOutput (Join-Path $Folder 'server.log') -RedirectStandardError (Join-Path $Folder 'server-error.log')
     $Ready = $false
@@ -33,6 +34,7 @@ try {
     Remove-Item Function:\Read-Host
     $Service = Get-Service HybridRMMInventory
     if ($Service.Status -ne 'Running' -or $Service.StartType -ne 'Automatic') { throw 'Service is not running automatically.' }
+    $Service.Dispose()
     $Installed = $false
     for ($Attempt=0; $Attempt -lt 30; $Attempt++) {
         $Data = Invoke-RestMethod "$Base/api/devices" -Headers $Headers
@@ -50,6 +52,33 @@ try {
     }
     if (-not $Restarted) { throw 'Service did not resume reporting after restart.' }
     & (Join-Path $Bundle 'uninstall.ps1')
+    # The uninstaller preserves configuration. Reinstallation must archive, not delete it.
+    $InstalledDirectory = Join-Path $env:ProgramData 'HybridRMM'
+    $PreviousConfigHash = (Get-FileHash (Join-Path $InstalledDirectory 'device.json')).Hash
+    Set-Content (Join-Path $InstalledDirectory 'preserve-test.txt') 'Preserve this local file'
+    $ExistingBackups = @(Get-ChildItem $env:ProgramData -Directory -Filter 'HybridRMM-backup-*' | Select-Object -ExpandProperty FullName)
+    $SecondArchive = Join-Path $Folder 'second.zip'
+    Invoke-WebRequest "$Base/api/agents/windows/download" -Method Post -Headers $Headers -Body '{}' -OutFile $SecondArchive
+    $SecondBundle = Join-Path $Folder 'second-bundle'
+    Expand-Archive $SecondArchive $SecondBundle
+    $SecondConfig = Get-Content (Join-Path $SecondBundle 'device.json') -Raw | ConvertFrom-Json
+    function Read-Host { param([string]$Prompt) return 'INSTALL' }
+    & (Join-Path $SecondBundle 'install.ps1')
+    Remove-Item Function:\Read-Host
+    $CreatedBackups = @(Get-ChildItem $env:ProgramData -Directory -Filter 'HybridRMM-backup-*' | Where-Object { $_.FullName -notin $ExistingBackups })
+    if ($CreatedBackups.Count -ne 1) { throw 'Recovery must create exactly one preserved backup.' }
+    $RecoveryBackup = $CreatedBackups[0].FullName
+    if ((Get-FileHash (Join-Path $RecoveryBackup 'device.json')).Hash -ne $PreviousConfigHash) { throw 'Recovery changed the previous credential file.' }
+    if ((Get-Content (Join-Path $RecoveryBackup 'preserve-test.txt') -Raw).Trim() -ne 'Preserve this local file') { throw 'Recovery lost local files.' }
+    $Recovered = $false
+    for ($Attempt=0; $Attempt -lt 30; $Attempt++) {
+        $Detail = Invoke-RestMethod ("$Base/api/devices/" + $SecondConfig.id) -Headers $Headers
+        if ($Detail.device.status -eq 'online') { $Recovered=$true; break }
+        Start-Sleep -Milliseconds 300
+    }
+    if (-not $Recovered) { throw 'Recovered installation did not report with the new credential.' }
+    & (Join-Path $SecondBundle 'uninstall.ps1')
+    Write-Host 'Recovery passed: previous credentials and local files preserved; new device reports online.'
     Write-Host 'Windows service test passed: dashboard bundle, installation, LocalService account, automatic startup, real health reporting, restart and uninstall.'
 } finally {
     if (Get-Service HybridRMMInventory -ErrorAction SilentlyContinue) {
@@ -59,5 +88,6 @@ try {
     if ($Server -and -not $Server.HasExited) { Stop-Process -Id $Server.Id }
     foreach ($Name in $Original.Keys) { [Environment]::SetEnvironmentVariable($Name, $Original[$Name]) }
     if (Test-Path (Join-Path $env:ProgramData 'HybridRMM')) { Remove-Item (Join-Path $env:ProgramData 'HybridRMM') -Recurse -Force }
+    if ($RecoveryBackup -and (Test-Path $RecoveryBackup)) { Remove-Item $RecoveryBackup -Recurse -Force }
     Remove-Item $Folder -Recurse -Force
 }

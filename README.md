@@ -16,6 +16,8 @@ Admin dashboard, downloadable Windows inventory agent, automatic device health r
 5. The agent reports hostname, OS version, architecture, CPU usage, physical memory usage, system-volume disk usage, and uptime every minute. The dashboard refreshes every 30 seconds and shows online/offline/pending/revoked devices, search/filter, device details, and recent CPU readings.
 6. Use **Revoke** to invalidate a retired device's credential. This blocks reports and new screen sessions; it does not uninstall software. Run the included uninstaller locally to remove the service. The protected configuration remains for deliberate preservation/removal.
 
+If no registered service exists but an old `C:\ProgramData\HybridRMM` directory remains, the installer preserves it under a unique `HybridRMM-backup-*` name before installing. It refuses to overwrite an existing registered service.
+
 Use a fresh download for every device. A ZIP contains that device's credential: never publish it or reuse it across computers. Python and an open browser are not required on monitored Windows devices. The process-only execution-policy override above does not change persistent policy. The executable is **unsigned**; Authenticode signing and reputation are not established. Windows 10/Server 2016 or newer, x64, is the build baseline.
 
 ## Upgrade the existing VPS

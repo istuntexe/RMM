@@ -3,6 +3,7 @@ $ErrorActionPreference = 'Stop'
 $Service = Get-Service -Name 'HybridRMMInventory' -ErrorAction SilentlyContinue
 if ($Service) {
     Stop-Service -Name 'HybridRMMInventory' -Force
+    $Service.Dispose()
     & sc.exe delete HybridRMMInventory | Out-Null
     if ($LASTEXITCODE -ne 0) { throw 'Could not remove the inventory service.' }
 }

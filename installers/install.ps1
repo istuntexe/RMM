@@ -9,13 +9,23 @@ Write-Host 'Reports hostname, OS, CPU, RAM, system disk usage and uptime every m
 Write-Host 'Runs visibly in Windows Services as Hybrid RMM Inventory Agent. No remote commands or screen capture.'
 if ((Read-Host 'Type INSTALL to authorize this installation') -cne 'INSTALL') { throw 'Installation cancelled.' }
 if (Get-Service -Name $ServiceName -ErrorAction SilentlyContinue) { throw 'Hybrid RMM is already installed. Preserve its state; uninstall before replacing it.' }
-if (Test-Path $Destination) { throw 'Existing HybridRMM directory found. Preserve its files before a new installation.' }
+foreach ($Required in @('device.json','hybridrmm-agent.exe','SHA256SUMS.txt','uninstall.ps1')) {
+    if (-not (Test-Path -LiteralPath (Join-Path $Source $Required) -PathType Leaf)) { throw ('Required bundle file missing: ' + $Required) }
+}
 $Config = Get-Content (Join-Path $Source 'device.json') -Raw | ConvertFrom-Json
 $Server = [Uri]$Config.server
 if ($Server.Scheme -ne 'https' -and -not ($Server.Scheme -eq 'http' -and $Server.IsLoopback)) { throw 'HTTPS server required.' }
 $Expected = ((Get-Content (Join-Path $Source 'SHA256SUMS.txt') | Where-Object { $_ -match '  hybridrmm-agent.exe$' }) -split '\s+')[0]
 $Actual = (Get-FileHash (Join-Path $Source 'hybridrmm-agent.exe') -Algorithm SHA256).Hash.ToLowerInvariant()
 if ($Actual -ne $Expected) { throw 'Executable checksum does not match the bundle manifest.' }
+if (Test-Path -LiteralPath $Destination) {
+    $SourcePath = [IO.Path]::GetFullPath($Source).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    $InstalledPath = [IO.Path]::GetFullPath($Destination).TrimEnd([IO.Path]::DirectorySeparatorChar)
+    if ($SourcePath.Equals($InstalledPath, [StringComparison]::OrdinalIgnoreCase) -or $SourcePath.StartsWith($InstalledPath + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) { throw 'Run the installer from an extracted download outside the existing HybridRMM directory.' }
+    $Backup = Join-Path $env:ProgramData ('HybridRMM-backup-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + [Guid]::NewGuid().ToString('N').Substring(0,8))
+    Move-Item -LiteralPath $Destination -Destination $Backup
+    Write-Host ('Previous local files preserved at: ' + $Backup)
+}
 New-Item -ItemType Directory -Path $Destination | Out-Null
 # Restrict credentials to SYSTEM, Administrators and the LocalService account.
 & icacls.exe $Destination '/inheritance:r' '/grant:r' '*S-1-5-18:(OI)(CI)F' '*S-1-5-32-544:(OI)(CI)F' '*S-1-5-19:(OI)(CI)RX' | Out-Null
