@@ -8,6 +8,7 @@ import secrets
 import sqlite3
 import time
 import uuid
+from contextlib import closing
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -20,7 +21,7 @@ def create_server(address, database, admin_token, enrollment_token):
     if min(len(admin_token), len(enrollment_token)) < 32 or admin_token == enrollment_token:
         raise ValueError('Use distinct admin and enrollment tokens of at least 32 characters')
     Path(database).parent.mkdir(parents=True, exist_ok=True)
-    with sqlite3.connect(database) as db:
+    with closing(sqlite3.connect(database)) as db, db:
         db.execute('CREATE TABLE IF NOT EXISTS devices (id TEXT PRIMARY KEY, token_hash TEXT UNIQUE NOT NULL, inventory TEXT NOT NULL, last_seen REAL NOT NULL)')
     os.chmod(database, 0o600)
 
@@ -55,7 +56,7 @@ def create_server(address, database, admin_token, enrollment_token):
                 return self.reply(404, {'error': 'not found'})
             if not self.authorized(admin_token):
                 return self.reply(401, {'error': 'unauthorized'})
-            with sqlite3.connect(database) as db:
+            with closing(sqlite3.connect(database)) as db, db:
                 rows = db.execute('SELECT id, inventory, last_seen FROM devices ORDER BY last_seen DESC').fetchall()
             return self.reply(200, {'devices': [{'id': r[0], 'inventory': json.loads(r[1]), 'last_seen': r[2], 'online': time.time() - r[2] < 180} for r in rows]})
 
@@ -67,7 +68,7 @@ def create_server(address, database, admin_token, enrollment_token):
                 return self.reply(401, {'error': 'unauthorized'})
             device_id = None
             if not enrolling:
-                with sqlite3.connect(database) as db:
+                with closing(sqlite3.connect(database)) as db, db:
                     row = db.execute('SELECT id FROM devices WHERE token_hash = ?', (digest(self.bearer()),)).fetchone()
                 if not row:
                     return self.reply(401, {'error': 'unauthorized'})
@@ -82,7 +83,7 @@ def create_server(address, database, admin_token, enrollment_token):
                     raise ValueError()
             except (ValueError, UnicodeError):
                 return self.reply(400, {'error': 'invalid inventory'})
-            with sqlite3.connect(database) as db:
+            with closing(sqlite3.connect(database)) as db, db:
                 if enrolling:
                     device_id, token = str(uuid.uuid4()), secrets.token_urlsafe(32)
                     db.execute('INSERT INTO devices VALUES (?, ?, ?, ?)', (device_id, digest(token), json.dumps(inventory), time.time()))

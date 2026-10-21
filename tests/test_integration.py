@@ -1,5 +1,6 @@
 import json
 import os
+import sqlite3
 import tempfile
 import threading
 import unittest
@@ -54,16 +55,49 @@ class Integration(unittest.TestCase):
         for token in ('', self.enroll, 'wrong'):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 self.devices(token)
+            self.addCleanup(error.exception.close)
             self.assertEqual(error.exception.code, 401)
         for endpoint in ('/api/enroll', '/api/heartbeat'):
             with self.assertRaises(urllib.error.HTTPError) as error:
                 agent.request(self.url, endpoint, self.admin)
+            self.addCleanup(error.exception.close)
             self.assertEqual(error.exception.code, 401)
         req = urllib.request.Request(self.url + '/api/enroll', data=b'{"unexpected":"field"}', headers={'Authorization': 'Bearer ' + self.enroll})
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(req)
+        self.addCleanup(error.exception.close)
         self.assertEqual(error.exception.code, 400)
         self.assertEqual(self.devices(self.admin), [])
+
+    def test_database_connections_are_closed(self):
+        connections = []
+        original_connect = sqlite3.connect
+
+        class TrackedConnection(sqlite3.Connection):
+            closed = False
+
+            def close(self):
+                super().close()
+                self.closed = True
+
+        def connect(*args, **kwargs):
+            connection = original_connect(*args, factory=TrackedConnection, **kwargs)
+            connections.append(connection)
+            return connection
+
+        with patch.object(server.sqlite3, 'connect', side_effect=connect):
+            extra = server.create_server(('127.0.0.1', 0), str(Path(self.temp.name) / 'extra.sqlite'), self.admin, self.enroll)
+            extra.server_close()
+            enrolled = agent.request(self.url, '/api/enroll', self.enroll)
+            agent.request(self.url, '/api/heartbeat', enrolled['device_token'])
+            self.devices(self.admin)
+        try:
+            self.assertEqual(len(connections), 5)
+            self.assertTrue(all(connection.closed for connection in connections), 'Database connections must close before cleanup, including on Windows')
+        finally:
+            for connection in connections:
+                if not connection.closed:
+                    connection.close()
 
     def test_remote_plaintext_rejected(self):
         with self.assertRaises(ValueError):
