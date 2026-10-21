@@ -29,4 +29,4 @@ New-Service -Name $ServiceName -DisplayName 'Hybrid RMM Inventory Agent' -Descri
 Start-Service -Name $ServiceName
 Write-Host 'Installed. The device should appear online in your admin dashboard within a minute.'
 Write-Host ('Uninstall with: powershell -File "' + (Join-Path $Destination 'uninstall.ps1') + '"')
-Write-Host 'Protect or delete the downloaded bundle: it contains this device’s credential.'
+Write-Host 'Protect or delete the downloaded bundle: it contains a private device credential.'
